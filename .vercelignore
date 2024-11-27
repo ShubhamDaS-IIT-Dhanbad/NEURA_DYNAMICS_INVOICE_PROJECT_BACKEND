@@ -1,0 +1,11 @@
+*.md
+__tests__
+tests/
+.git/
+.gitignore
+.env
+*.pyc
+.vscode/
+.idea/
+.DS_Store
+node_modules/
