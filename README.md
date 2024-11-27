@@ -1,4 +1,4 @@
-# Invoice Management Backend - Django
+# Invoice Management Backend - Django[backend not deployed.... working on it...and also integrating to frontend]
 
 This is the backend server built with Django, specifically for managing invoices. The application supports operations to **Create, Read, Update, and Delete (CRUD)** invoices. Unlike traditional relational databases, this system uses a **JSON file** (`invoices.json`) to store and manage invoice data.
 
