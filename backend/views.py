@@ -19,6 +19,13 @@ async def async_read_invoices():
 
 
 
+
+
+
+
+
+
+
 def read_invoices_from_file():
     """Read invoices from the file synchronously."""
     try:
@@ -37,7 +44,7 @@ def write_invoices_to_file(invoices):
 # GET method to list all invoices
 async def get_invoices(request):
     try:
-        invoices = await async_read_invoices()  # Async read invoices from file
+        invoices = await async_read_invoices()
         return JsonResponse({
             'status': 'success',
             'message': 'Invoices retrieved successfully.',
@@ -49,15 +56,38 @@ async def get_invoices(request):
             'message': str(e)
         }, status=500)
 
+
+
+
+
+
+
+
 # POST method to create a new invoice
 @csrf_exempt
 def create_invoice(request):
     if request.method == 'POST':
         try:
+            print("shubham")
+
             # Parse the incoming JSON request data
             data = json.loads(request.body)
-            # Serialize the incoming data
-            serializer = InvoiceSerializer(data=data)
+
+            # Validate the data manually
+            customer_name = data.get('customer_name')
+            details = data.get('details')
+
+            if not customer_name:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Customer name is required.'
+                }, status=400)
+
+            if not details or not isinstance(details, list) or len(details) == 0:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Details are required and must be a non-empty list.'
+                }, status=400)
 
             # Read the current invoices from the file
             if os.path.exists(INVOICE_FILE_PATH):
@@ -66,44 +96,58 @@ def create_invoice(request):
             else:
                 invoices = []
 
-            # Check if the data is valid
-            if serializer.is_valid():
-                invoice = serializer.data
+            # Calculate total amount by multiplying count with price for each product in the details
+            total_amount = 0
+            details_with_ids = []
 
-                # Prepare unique IDs for details
-                details_with_ids = [
-                    {**detail, 'id': idx + 1} for idx, detail in enumerate(invoice["details"])
-                ]
+            print(data)
+            for idx, detail in enumerate(details):
+                # Ensure 'count' and 'price' are present
+                count = detail.get('quantity', 0)
+                price = detail.get('unit_price', 0)
 
-                # Prepare the new invoice to append to the invoices list
-                new_invoice = {
-                    'id': len(invoices) + 1,  # Generate a new unique ID
-                    'invoice_number': invoice['invoice_number'],  
-                    'customer_name': invoice['customer_name'],
-                    'date': invoice['date'],
-                    'details': details_with_ids
-                }
+                # Convert 'count' to an integer and 'price' to a float
+                try:
+                    count = int(count) if count != '' else 0  # Convert count to integer (default to 0 if empty)
+                    price = float(price) if price != '' else 0.0  # Convert price to float (default to 0.0 if empty)
+                except ValueError:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid value for count or price. Must be numeric.'
+                    }, status=400)
 
-                # Append the new invoice to the existing list
-                invoices.append(new_invoice)
+                print(detail, count, price)
 
-                # Write the updated invoices list back to the file
-                with open(INVOICE_FILE_PATH, 'w') as f:
-                    json.dump(invoices, f, indent=4)
+                # Calculate the amount for this particular detail
+                detail_amount = count * price
+                total_amount += detail_amount
 
-                # Return a successful response
-                return JsonResponse({
-                    'status': 'success',
-                    'message': 'Invoice created successfully.',
-                    'data': new_invoice
-                })
+                # Add an ID to the detail (for example, a unique index)
+                details_with_ids.append({**detail, 'id': idx + 1})
 
-            else:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'Invoice creation failed.',
-                    'errors': serializer.errors
-                }, status=400)
+            # Prepare the new invoice to append to the invoices list
+            new_invoice = {
+                'id': len(invoices) + 1,  # Generate a new unique ID
+                'invoice_number': len(invoices) + 1,
+                'customer_name': customer_name,
+                'date': data.get('date'),  # Use provided date or handle default
+                'details': details_with_ids,
+                'total_amount': total_amount  # Add the total amount to the invoice
+            }
+
+            # Append the new invoice to the existing list
+            invoices.append(new_invoice)
+
+            # Write the updated invoices list back to the file
+            with open(INVOICE_FILE_PATH, 'w') as f:
+                json.dump(invoices, f, indent=4)
+
+            # Return a successful response
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Invoice created successfully.',
+                'data': new_invoice
+            })
 
         except json.JSONDecodeError:
             return JsonResponse({
@@ -115,6 +159,7 @@ def create_invoice(request):
         'status': 'error',
         'message': 'Only POST requests are allowed.'
     }, status=405)
+    
 
 
 # PUT method to update an existing invoice
@@ -130,6 +175,18 @@ def update_invoice(request):
         # Parse the incoming JSON request data
         data = json.loads(request.body)
 
+        # Handle string-to-JSON conversion for specific keys
+        for key, value in data.items():
+            if isinstance(value, str):
+                try:
+                    # Attempt to parse strings as JSON
+                    data[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    # Leave the value as-is if it's not a JSON string
+                    pass
+
+        print("update", data)
+
         # Read the existing invoices from the file
         invoices = read_invoices_from_file()
 
@@ -142,34 +199,66 @@ def update_invoice(request):
             }, status=404)
 
         # Update or add fields from the incoming data
-        for key, value in data.items():
-            if key == "details":
-                # Handle details specifically
-                existing_details = invoice.get("details", [])
-                max_existing_id = max((detail["id"] for detail in existing_details if "id" in detail), default=0)
+        details = data.get("details", [])
+        total_amount = 0
+        details_with_ids = []
 
-                updated_details = []
-                for new_detail in value:
-                    if "id" in new_detail:
-                        # Update existing detail
-                        existing_detail = next((det for det in existing_details if det["id"] == new_detail["id"]), None)
-                        if existing_detail:
-                            existing_detail.update(new_detail)
-                            updated_details.append(existing_detail)
-                        else:
-                            # If the id is not in existing details, add it as a new entry
-                            updated_details.append(new_detail)
+        for idx, detail in enumerate(details):
+            # Ensure 'count' and 'price' are present
+            count = detail.get('quantity', 0)
+            price = detail.get('unit_price', 0)
+
+            # Convert 'count' to an integer and 'price' to a float
+            try:
+                count = int(count) if count != '' else 0  # Convert count to integer (default to 0 if empty)
+                price = float(price) if price != '' else 0.0  # Convert price to float (default to 0.0 if empty)
+            except ValueError:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Invalid value for count or price. Must be numeric.'
+                }, status=400)
+
+            print(detail, count, price)
+
+            # Calculate the amount for this particular detail
+            detail_amount = count * price
+            total_amount += detail_amount
+
+            # Add an ID to the detail (for example, a unique index)
+            details_with_ids.append({**detail, 'id': idx + 1})
+
+        # Update the invoice's details with the new data
+        if "details" in data:
+            existing_details = invoice.get("details", [])
+            max_existing_id = max((detail["id"] for detail in existing_details if "id" in detail), default=0)
+
+            updated_details = []
+            for new_detail in details_with_ids:
+                if "id" in new_detail:
+                    # Update existing detail
+                    existing_detail = next((det for det in existing_details if det["id"] == new_detail["id"]), None)
+                    if existing_detail:
+                        existing_detail.update(new_detail)
+                        updated_details.append(existing_detail)
                     else:
-                        # New detail, assign unique id
-                        new_detail["id"] = max_existing_id + 1
-                        max_existing_id += 1
+                        # If the id is not in existing details, add it as a new entry
                         updated_details.append(new_detail)
+                else:
+                    # New detail, assign unique id
+                    new_detail["id"] = max_existing_id + 1
+                    max_existing_id += 1
+                    updated_details.append(new_detail)
 
-                # Update the invoice details
-                invoice["details"] = updated_details
-            else:
-                # Update other fields
+            # Update the invoice details
+            invoice["details"] = updated_details
+
+        # Update other fields from the incoming data (excluding "details")
+        for key, value in data.items():
+            if key != "details":
                 invoice[key] = value
+
+        # Update the total amount of the invoice
+        invoice['total_amount'] = total_amount
 
         # Write the updated invoices list back to the file
         write_invoices_to_file(invoices)
@@ -191,7 +280,6 @@ def update_invoice(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
-
 
 
 # DELETE method to delete an invoice
