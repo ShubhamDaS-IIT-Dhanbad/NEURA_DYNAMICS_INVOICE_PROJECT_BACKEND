@@ -1,23 +1,12 @@
 import json
-import asyncio
+import os
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .serializers import InvoiceSerializer, read_invoices_from_file, write_invoices_to_file
-from asgiref.sync import sync_to_async  # Import for async compatibility with sync functions
+from .serializers import InvoiceSerializer
+from .utils import read_invoices_from_file, write_invoices_to_file  # Utility functions for file handling
 import os
 
 INVOICE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'invoices.json')
-
-# Async function to serialize JSON data
-async def async_json_dumps(data, indent=4):
-    """Offload the blocking JSON serialization to a separate thread."""
-    return await asyncio.to_thread(json.dumps, data, indent=indent)
-
-# Async function to handle reading invoices from file
-async def async_read_invoices():
-    return await asyncio.to_thread(read_invoices_from_file)
-
-
 
 def read_invoices_from_file():
     """Read invoices from the file synchronously."""
@@ -33,11 +22,10 @@ def write_invoices_to_file(invoices):
         json.dump(invoices, f, indent=4)
 
 
-
 # GET method to list all invoices
-async def get_invoices(request):
+def get_invoices(request):
     try:
-        invoices = await async_read_invoices()  # Async read invoices from file
+        invoices = read_invoices_from_file()  # Synchronously read invoices from file
         return JsonResponse({
             'status': 'success',
             'message': 'Invoices retrieved successfully.',
@@ -60,11 +48,7 @@ def create_invoice(request):
             serializer = InvoiceSerializer(data=data)
 
             # Read the current invoices from the file
-            if os.path.exists(INVOICE_FILE_PATH):
-                with open(INVOICE_FILE_PATH, 'r') as f:
-                    invoices = json.load(f)
-            else:
-                invoices = []
+            invoices = read_invoices_from_file()
 
             # Check if the data is valid
             if serializer.is_valid():
@@ -88,8 +72,7 @@ def create_invoice(request):
                 invoices.append(new_invoice)
 
                 # Write the updated invoices list back to the file
-                with open(INVOICE_FILE_PATH, 'w') as f:
-                    json.dump(invoices, f, indent=4)
+                write_invoices_to_file(invoices)
 
                 # Return a successful response
                 return JsonResponse({
@@ -191,7 +174,6 @@ def update_invoice(request):
             'status': 'error',
             'message': str(e)
         }, status=500)
-
 
 
 # DELETE method to delete an invoice
