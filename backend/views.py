@@ -292,8 +292,14 @@ def delete_invoice(request):
                 'message': 'Only DELETE requests are allowed.'
             }, status=405)
 
-        # Parse the incoming JSON request data
-        data = json.loads(request.body)
+        # Parse the incoming JSON request body
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid JSON data.'
+            }, status=400)
 
         # Read the existing invoices from the file
         invoices = read_invoices_from_file()
@@ -301,9 +307,16 @@ def delete_invoice(request):
         # Extract necessary fields from the request
         invoice_id = data.get('invoice_id')
         detail_id = data.get('detail_id')
+        print(invoice_id,detail_id)
+
+        if not invoice_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invoice ID is required.'
+            }, status=400)
 
         # Find the invoice with the given ID
-        invoice = next((inv for inv in invoices if inv['id'] == invoice_id), None)
+        invoice = next((inv for inv in invoices if inv['invoice_number'] == invoice_id), None)
         if not invoice:
             return JsonResponse({
                 'status': 'error',
@@ -334,14 +347,8 @@ def delete_invoice(request):
             'message': message
         })
 
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Invalid JSON data.'
-        }, status=400)
-
     except Exception as e:
         return JsonResponse({
             'status': 'error',
-            'message': str(e)
+            'message': f'An error occurred: {str(e)}'
         }, status=500)
