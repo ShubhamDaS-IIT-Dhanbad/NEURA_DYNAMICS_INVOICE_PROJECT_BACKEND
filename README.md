@@ -2,11 +2,14 @@
 
 This is the backend server built with Django, specifically for managing invoices. The application supports operations to **Create, Read, Update, and Delete (CRUD)** invoices. Unlike traditional relational databases, this system uses a **JSON file** (`invoices.json`) to store and manage invoice data.
 
+
+
 ### Features:
 - **CRUD Operations**: Endpoints to create, retrieve, update, and delete invoices.
 - **JSON-based Storage**: Invoice data is stored in a JSON file (`invoices.json`), making it easy to manage without the need for complex database setups.
 - **Invoice Validation**: Ensures that each invoice contains necessary details like customer name, invoice date, and product details.
 - **Security**: Basic error handling and validation for secure data transactions.
+- - **pagination**:not implemented.
 
 ### Tech Stack:
 - **Backend**: Django
